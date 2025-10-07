@@ -1,4 +1,9 @@
 /* --- 1. ウィンドウ全体の設定 --- */
+
+html {
+  touch-action: manipulation;
+}
+
 html, body {
     /* デフォルトの余白をリセット */
     margin: 0;
