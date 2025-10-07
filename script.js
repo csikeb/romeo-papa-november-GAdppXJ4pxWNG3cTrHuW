@@ -1,6 +1,6 @@
 const display = document.getElementById('display');
 const buttons = document.querySelectorAll('.button');
-const stackView = document.getElementById('stack-view'); 
+// const stackView = document.getElementById('stack-view'); // 削除済み
 
 // 4つのレジスタを定義
 // T, Z, Y はオブジェクトのプロパティとして保持
@@ -12,11 +12,52 @@ let stack = {
 let currentInput = '0'; // Xレジスタの役割
 let waitingForNewNumber = true; 
 
-// 階乗を計算するヘルパー関数
+// --- スケール（拡大・縮小）ロジック ---
+
+// 電卓の元の基準サイズ（CSSで定義した固定値）
+// 幅: 300px (コンテンツ) + 20px*2 (padding) = 340px
+// 【修正】高さ: 440px -> 500pxに増強し、すべてのボタンが確実に入るようにする
+const BASE_WIDTH = 340; 
+const BASE_HEIGHT = 540; 
+
+const calculatorElement = document.querySelector('.calculator');
+
+function scaleCalculator() {
+    // 1. 現在のウィンドウの幅と高さを取得
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    // 2. 基準サイズに対する拡大率を計算
+    // 【修正】画面のフチに持たせる余白を増やします (40px -> 100px)
+    const margin = 100; 
+    const scaleX = (windowWidth - margin) / BASE_WIDTH;
+    const scaleY = (windowHeight - margin) / BASE_HEIGHT;
+
+    // 3. 縦横の拡大率のうち、小さい方を採用（縦横比を完全に維持するため）
+    const scale = Math.min(scaleX, scaleY);
+    
+    // スケールを適用
+    calculatorElement.style.transform = `scale(${scale})`;
+    
+    // 拡大後に電卓をウィンドウの中央に配置するための調整
+    const scaledWidth = BASE_WIDTH * scale;
+    const scaledHeight = BASE_HEIGHT * scale;
+
+    const offsetX = (windowWidth - scaledWidth) / 2;
+    const offsetY = (windowHeight - scaledHeight) / 2;
+    
+    // transform-origin: top left; と組み合わせて、正確に中央に配置
+    calculatorElement.style.left = `${offsetX}px`;
+    calculatorElement.style.top = `${offsetY}px`;
+}
+
+// ページロード時とウィンドウサイズ変更時に実行
+window.addEventListener('resize', scaleCalculator);
+document.addEventListener('DOMContentLoaded', scaleCalculator);
+
+// --- ヘルパー関数 (factorial) ---
 function factorial(n) {
     const num = Number(n);
-    // 負の数、小数、または 21 以上の整数は精度超過としてエラーにする
-    // 21! は Number.MAX_SAFE_INTEGER を超える
     if (num < 0 || num !== Math.floor(num) || num > 20) {
         return "Error"; 
     }
@@ -26,7 +67,6 @@ function factorial(n) {
     let res = 1;
     for (let i = 2; i <= num; i++) {
         res *= i;
-        // 念のため、計算中に MAX_SAFE_INTEGER を超えたらエラー
         if (res > Number.MAX_SAFE_INTEGER) {
              return "Error"; 
         }
@@ -34,49 +74,26 @@ function factorial(n) {
     return res;
 }
 
-// スタックの全内容をHTMLに表示する関数
+// --- スタック表示を削除した関数 ---
 function updateStackView() {
-    // レジスタの値を直接参照
-    const t = stack.T;
-    const z = stack.Z;
-    const y = stack.Y;
-    const x = currentInput; // Xレジスタ
-
-    /*
-    stackView.innerHTML = `
-        T: ${String(t).substring(0, 15)}<br>
-        Z: ${String(z).substring(0, 15)}<br>
-        Y: ${String(y).substring(0, 15)}<br>
-        <span style="font-weight: bold;">X: ${String(x).substring(0, 15)}</span>
-    `;
-    */
+    // スタック表示の処理は削除
 }
 
 // 画面表示を更新する関数
 function updateDisplay() {
-    // Xレジスタ（currentInput）をそのまま表示する
     const displayValue = currentInput;
-
     display.value = String(displayValue).substring(0, 15);
-    
-    updateStackView();
 }
 
 // 演算を実行し、結果をレジスタに入れる関数
 function performOperation(op) {
-    // Xレジスタの値を数値として取得
     const xValue = Number(currentInput);
     
     // 二項演算子 (+, -, *, /, pow) の処理
     if (['+', '-', '*', '/', 'pow'].includes(op)) {
-        
-        // T保持のための元のTの値を取得
         const tValueToRetain = stack.T; 
-        
-        // YとXのオペランド
-        const operand1 = stack.Y; // Yレジスタの値
-        const operand2 = xValue;  // Xレジスタの値 (currentInput)
-
+        const operand1 = stack.Y; 
+        const operand2 = xValue; 
         let result = 0;
 
         switch (op) {
@@ -93,21 +110,11 @@ function performOperation(op) {
         }
 
         if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-            
-            // 【スタックドロップ処理 (T保持)】
-            // 1. Tレジスタは元の値を保持
             stack.T = tValueToRetain;
-            
-            // 2. ZレジスタはTレジスタの値（元のTの値）を引き継ぐ
             stack.Z = tValueToRetain; 
-            
-            // 3. YレジスタにはZレジスタの値（元のTの値）がドロップする。
             stack.Y = stack.Z; 
-            
-            // 4. Xレジスタ (currentInput) に計算結果を代入
             currentInput = String(result); 
         } else {
-             // isFinite(result) が false の場合 (Infinity, -Infinity) も Error 処理
              result = "Error";
              stack.T = 0; stack.Z = 0; stack.Y = 0;
              currentInput = "Error";
@@ -120,8 +127,6 @@ function performOperation(op) {
     
     // 単項演算子 (sqrt, inv, fact) の処理
     if (['sqrt', 'inv', 'fact'].includes(op)) {
-        
-        // Xレジスタの値をオペランドとする
         const operand = xValue;
         let result = 0;
         
@@ -133,17 +138,14 @@ function performOperation(op) {
                 result = (operand === 0) ? "Error" : 1 / operand; 
                 break;
             case 'fact': 
-                result = factorial(operand); // 修正された factorial 関数を呼び出す
+                result = factorial(operand); 
                 break;
             default: return;
         }
 
         if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-            
-            // 単項演算ではXレジスタが結果で上書きされるのみ。
             currentInput = String(result);
         } else {
-            // Error の場合
             currentInput = "Error";
             stack.T = 0; stack.Z = 0; stack.Y = 0;
         }
@@ -163,16 +165,10 @@ buttons.forEach(button => {
 
         // 入力待ち状態で数字/ドットが押された場合、スタックリフトを実行
         if (waitingForNewNumber && !isOp && value !== '.') {
-            
-            // Xレジスタの現在の値（前の計算結果など）を取得
             const valueToPush = Number(currentInput); 
-            
-            // スタックリフト処理 (X -> Y -> Z -> T -> 破棄)
             stack.T = stack.Z; 
             stack.Z = stack.Y; 
             stack.Y = valueToPush; 
-            
-            // Xレジスタを新しい入力のために '0' にリセット
             currentInput = '0';
             waitingForNewNumber = false;
         }
@@ -194,19 +190,11 @@ buttons.forEach(button => {
         // 2. Enterボタンが押されたとき
         } else if (value === 'Enter') {
             if (currentInput === "Error") return;
-
-            // Xレジスタ（currentInput）の現在の値を数値として取得
             const valueToPush = Number(currentInput); 
-
-            // スタックリフト処理 (X -> Y -> Z -> T -> 破棄)
             stack.T = stack.Z; 
             stack.Z = stack.Y; 
-            stack.Y = valueToPush; // YはXの値（プッシュ値）になる
-            
-            // Xレジスタはプッシュした値（Yの値）を複製し、保持する
+            stack.Y = valueToPush; 
             currentInput = String(valueToPush); 
-            
-            // Enter後は入力待ち状態
             waitingForNewNumber = true;
         
         } else if (isOp) {
@@ -214,7 +202,6 @@ buttons.forEach(button => {
 
             if (['pow', 'sqrt', 'inv', 'fact', '+', '-', '*', '/'].includes(value)) {
                  if (!waitingForNewNumber && currentInput !== "Error") {
-                    // Xは operand2 としてそのまま performOperation に渡される
                     waitingForNewNumber = true;
                  }
                  performOperation(value);
@@ -236,13 +223,10 @@ buttons.forEach(button => {
                 }
             } else if (value === 'Swap') {
                 if (currentInput === "Error") return;
-                
-                // YとXの値を入れ替える
                 const xTemp = Number(currentInput);
                 currentInput = String(stack.Y);
                 stack.Y = xTemp;
-                
-                waitingForNewNumber = true; // Swap後は入力待ち状態
+                waitingForNewNumber = true; 
             }
         }
         updateDisplay();
